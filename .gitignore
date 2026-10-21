@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Runtime logs and local datasets
+*.log
+cowrie.json
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
