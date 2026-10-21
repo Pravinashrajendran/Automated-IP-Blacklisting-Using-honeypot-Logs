@@ -1,4 +1,0 @@
-*.log
-_pycache_/
-*.pyc
-cowrie.json
