@@ -1,101 +1,147 @@
 # Automated IP Blacklisting Using Honeypot Logs
 
-## Project Overview
+A cybersecurity lab project that combines the Cowrie SSH/Telnet honeypot, Python log analysis, Linux firewall rules, and the ELK Stack to explore how suspicious activity can be identified and blocked.
 
-This project is designed to detect and prevent SSH brute-force attacks using a honeypot-based approach. It uses the Cowrie SSH honeypot to capture attacker activity and integrates with the ELK Stack (Elasticsearch, Logstash, and Kibana) for log processing and visualization.
+> **Project status:** Educational/lab implementation. The current Python script reads Cowrie JSON events and adds an `iptables` DROP rule after an IP reaches the configured command-event threshold. It is scheduled through cron; it is not a real-time detection service or a production-ready firewall manager.
 
-A Python script is used to analyze attacker behavior from the logs and automatically block malicious IP addresses when suspicious activity is detected. This helps in improving system security by enabling faster and automated response to attacks.
+## Overview
 
-## Features
+Cowrie records activity from systems interacting with a decoy SSH/Telnet service. This project uses the resulting JSON events for two related workflows:
 
-* Cowrie honeypot for capturing SSH attack attempts
-* ELK Stack integration for log collection and visualization
-* Automated IP blocking based on attacker commands
-* Cron job scheduling for continuous monitoring
-* Simple and organized project structure
+1. **Visibility:** Logstash forwards Cowrie events to Elasticsearch for investigation and Kibana visualisation.
+2. **Response experiment:** `block_ips.py` counts `cowrie.command.input` events by source IP and adds a firewall DROP rule when the count reaches five.
 
 ## Architecture
 
-Attacker → Cowrie Honeypot → Logstash → Elasticsearch → Kibana
-Python Script → Firewall (IP Blocking)
+```text
+Controlled test client
+        |
+        v
+Cowrie SSH/Telnet honeypot
+        |                         Cowrie JSON log
+        |                                  |
+        |                                  +--> Python block_ips.py
+        |                                           |
+        v                                           v
+     Logstash --------------------------------> iptables
+        |
+        v
+  Elasticsearch
+        |
+        v
+      Kibana
+```
 
-## Technologies Used
+The log-visualisation and blocking paths are separate consumers of the Cowrie JSON log.
 
-* Cowrie Honeypot
-* Elasticsearch
-* Logstash
-* Kibana
-* Python
-* Linux (Ubuntu recommended)
+## Repository layout
 
-## Installation
+```text
+.
+├── README.md
+├── block_ips.py                 # Rule-based IP blocking script
+├── cowrie-logstash.conf         # Logstash file input and Elasticsearch output
+├── cowrie_cron.txt              # Example cron schedule
+├── cowrie_sample.json           # Sample Cowrie JSON events
+├── .gitignore
+└── kibana_dashboard/
+    ├── Kinana_dasboard.png
+    └── Timeline_Kibana.png.jpeg
+```
 
-### Clone the Repository
+## Technology stack
 
+- **Cowrie** — SSH/Telnet honeypot and event generation
+- **Python 3** — Parses JSON events and applies the blocking rule
+- **iptables** — Adds source-IP DROP rules
+- **Logstash** — Reads Cowrie JSON events and forwards them
+- **Elasticsearch** — Stores events for search
+- **Kibana** — Visualises event patterns
+- **cron** — Schedules periodic script execution
+
+## Prerequisites
+
+- An isolated Ubuntu/Linux lab or virtual machine
+- Python 3
+- Cowrie installed and generating `cowrie.json`
+- Elasticsearch, Logstash, and Kibana installed and configured if using the ELK workflow
+- Administrative permission for firewall changes
+
+Do not expose a honeypot or test target to networks you do not control. Run experiments in an isolated, authorised lab.
+
+## Setup
+
+### 1. Clone this repository
+
+```bash
 git clone https://github.com/Pravinashrajendran/Automated-IP-Blacklisting-Using-honeypot-Logs.git
 cd Automated-IP-Blacklisting-Using-honeypot-Logs
+```
 
-### Setup Cowrie Honeypot
+### 2. Check the Cowrie log path
 
-git clone https://github.com/cowrie/cowrie.git
-cd cowrie
-./bin/cowrie start
+The current script expects:
 
-### Install ELK Stack
+```text
+/cowrie/var/log/cowrie/cowrie.json
+```
 
-Install Elasticsearch, Logstash, and Kibana and start the services:
+If your Cowrie installation uses another path, update `LOG_FILE` in `block_ips.py`. Confirm that the account running the script can read the log.
 
-sudo systemctl start elasticsearch
-sudo systemctl start logstash
-sudo systemctl start kibana
+### 3. Configure Logstash
 
-### Configure Logstash
+Review `cowrie-logstash.conf` and adapt the input path, Elasticsearch URL, certificate path, and index naming to your environment. Set the Elasticsearch password in the Logstash service environment as `ELASTIC_PASSWORD`; never hard-code credentials in a tracked configuration file.
 
-Use the configuration file provided in the logstash folder to forward Cowrie logs to Elasticsearch.
+For a typical Linux service installation, the Elasticsearch CA certificate path may differ from the example in the configuration. Use the CA certificate for your own Elasticsearch deployment and keep certificate verification enabled.
 
-### Install Python Requirements
+### 4. Start the services
 
-pip install -r requirements.txt
+Start Cowrie, Elasticsearch, Logstash, and Kibana using the service commands appropriate for your installation. Service names and installation methods can differ by version and deployment.
 
-## Usage
+### 5. Run the blocking script carefully
 
-Start the Cowrie honeypot and ELK services.
+Inspect the script and test it in a disposable lab before enabling firewall changes. The script invokes `sudo iptables`, so configure permissions deliberately and verify the target host's firewall rules before running it.
 
-Run the IP blocking script:
-python scripts/ip_blocker.py
+```bash
+python3 block_ips.py
+```
 
-To automate the process, add a cron job:
-crontab -e
+The script currently uses a threshold of **five command-input events per source IP**. This is a simple demonstration heuristic, not a reliable standalone indicator of maliciousness.
 
-Example:
-*/5 * * * * python3 /path/to/scripts/ip_blocker.py
+### 6. Schedule with cron (optional)
 
-## Folder Structure
+`cowrie_cron.txt` contains an example schedule that runs every three minutes. Review and adapt the absolute script path, Python path, permissions, and logging before adding it to your own crontab.
 
-scripts/        Python scripts for IP blocking
-sample_logs/    Sample Cowrie logs
-logstash/       Logstash configuration
-cron/           Cron job setup
+## Screenshots
 
-## Output
+### Kibana dashboard
 
-* Detection of SSH brute-force attacks
-* Collection of attacker IP addresses and commands
-* Automatic blocking of malicious IPs
-* Visualization of attack activity in Kibana dashboards
+![Kibana dashboard](kibana_dashboard/Kinana_dasboard.png)
 
-## Conclusion
+### Event timeline
 
-This project demonstrates how honeypot data can be used to detect real-world attacks and respond automatically. It provides a practical implementation of threat detection and prevention using open-source tools.
+![Kibana event timeline](kibana_dashboard/Timeline_Kibana.png.jpeg)
+
+## Important limitations
+
+- The current script counts command-input events from the log on each run; it does not maintain a durable, time-windowed counter.
+- The threshold is rule-based and can cause false positives.
+- The script appends firewall rules and does not provide expiry, allow-list management, or automatic cleanup of old rules.
+- A cron schedule introduces delay; this is not real-time response.
+- `iptables` behaviour can differ on systems using nftables or other firewall managers.
+- The Logstash configuration must be adapted to your own Elasticsearch TLS and authentication settings.
+
+Treat this as a learning project, not a production security control.
+
+## Future improvements
+
+- Add configuration options for log path and threshold
+- Track event counts over a defined time window
+- Add allow-lists, rule expiry, audit logs, and safe rollback
+- Add tests for malformed events and repeated IPs
+- Add alerts and dashboard exports
+- Document a reproducible lab setup with version-pinned dependencies
 
 ## Author
 
-Pravinash SMR
-Master’s in Cybersecurity
-
-## Future Work
-
-* Machine learning-based attack detection
-* Integration with threat intelligence feeds
-* Real-time alerting system
-* Enhanced Kibana dashboards
+**Pravinash SMR** — Cybersecurity projects and hands-on security monitoring.
